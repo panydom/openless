@@ -759,6 +759,7 @@ export const ja: typeof zhCN = {
         asrWhisper: 'OpenAI Whisper（互換）',
         asrOpenrouter: 'OpenRouter Whisper',
         asrXiaomiMimo: 'Xiaomi MiMo ASR',
+        asrXfyun: 'iFlytek リアルタイム音声転写（標準版）',
         asrSherpaOnnxLocal: 'ローカル sherpa-onnx（実験的）',
         asrFoundryLocalWhisper: 'ローカル Whisper（Foundry Local）',
         asrLocalQwen3: 'ローカル Qwen3-ASR',

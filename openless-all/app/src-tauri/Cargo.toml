@@ -28,6 +28,9 @@ serde_json = "1"
 # OpenRouter ASR 把音频以标准 base64（带 padding）放进 JSON body（issue #582）。
 base64 = "0.22"
 sha2 = "0.10"
+sha1 = "0.10"
+md5 = "0.7"
+urlencoding = "2"
 # issue #609 F-03：history.json 完整性校验（HMAC-SHA256），密钥存系统凭据库。
 hmac = "0.12"
 # issue #609 H-02：HMAC 比较走常量时间，避免计时侧信道。已在依赖树（sha2/hmac 传递），

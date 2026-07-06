@@ -191,7 +191,7 @@ OpenLess does one thing: it **turns speech into usable written text — AI promp
 - 🎨 **Style Pack Marketplace** — browse, install, and like community **style packs** from the in-app Marketplace, and publish your own (custom system prompt per pack, switchable by hotkey). Backed by a moderated marketplace backend; uploads are reviewed before they go public.
 - ⚡ **Streaming insertion** — polished text is written to the cursor character by character to reduce perceived latency, with an automatic one-shot-paste fallback. Toggle in Settings → Recording.
 - **Toggle and push-to-talk** recording modes, plus a **MediaPlayPause trigger** so wired-earbud inline controls can start and stop recording. `Esc` cancels at any phase, including polish and insertion.
-- **Cloud ASR**: Volcengine streaming ASR, OpenAI Whisper-compatible batch ASR, Apple Speech (macOS).
+- **Cloud ASR**: Volcengine streaming ASR, iFlytek Realtime ASR (Standard), OpenAI Whisper-compatible batch ASR, Apple Speech (macOS).
 - **Local ASR**: bundled Qwen3-ASR (0.6B / 1.7B) via vendored `Open-Less/qwen-asr`; Windows Foundry Local Whisper variants.
 - **Polish providers**: Ark / DeepSeek / OpenAI / Doubao / Anthropic-compatible chat completions, plus any OpenAI-compatible endpoint you bring.
 - **Four output modes**: raw, light polish, structured (**AI-prompt mode**), and formal. Plus a **translation hotkey** that converts speech directly into the configured target language ([#43](../../issues/43)).

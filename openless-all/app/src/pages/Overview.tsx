@@ -33,6 +33,7 @@ const ASR_NAME_KEY_BY_ID: Record<string, string> = {
   whisper: 'asrWhisper',
   openrouter: 'asrOpenrouter',
   'xiaomi-mimo-asr': 'asrXiaomiMimo',
+  'xfyun-rtasr': 'asrXfyun',
   'foundry-local-whisper': 'asrFoundryLocalWhisper',
   'sherpa-onnx-local': 'asrSherpaOnnxLocal',
   'local-qwen3': 'asrLocalQwen3',

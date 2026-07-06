@@ -118,6 +118,21 @@ pub(super) fn ensure_asr_credentials() -> Result<(), String> {
         return Ok(());
     }
 
+    if is_xfyun_provider(&active_asr) {
+        let app_id = CredentialsVault::get(CredentialAccount::AsrApiKey)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let api_key = CredentialsVault::get(CredentialAccount::AsrEndpoint)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        if app_id.trim().is_empty() || api_key.trim().is_empty() {
+            return Err("请先在设置中填写讯飞 App ID 和 API Key".to_string());
+        }
+        return Ok(());
+    }
+
     let creds = read_volc_credentials();
     if creds.app_id.trim().is_empty() || creds.access_token.trim().is_empty() {
         Err("请先在设置中填写火山引擎 ASR App Key 和 Access Key".to_string())
@@ -347,6 +362,10 @@ pub(super) fn is_mimo_provider(id: &str) -> bool {
     id == crate::asr::mimo::PROVIDER_ID
 }
 
+pub(super) fn is_xfyun_provider(id: &str) -> bool {
+    id == crate::asr::xfyun::PROVIDER_ID
+}
+
 pub(super) fn apply_chinese_script_preference(text: &str, pref: ChineseScriptPreference) -> String {
     if text.is_empty() {
         return String::new();
@@ -377,6 +396,10 @@ pub(super) enum QaAsrStart {
         asr: Arc<BailianRealtimeASR>,
         bridge: Arc<DeferredAsrBridge>,
     },
+    Xfyun {
+        asr: Arc<XfyunStreamingASR>,
+        bridge: Arc<DeferredAsrBridge>,
+    },
     Ready {
         active: ActiveAsr,
         consumer: Arc<dyn crate::recorder::AudioConsumer>,
@@ -388,6 +411,7 @@ impl QaAsrStart {
         match self {
             QaAsrStart::Volcengine { asr, .. } => ActiveAsr::Volcengine(Arc::clone(asr)),
             QaAsrStart::Bailian { asr, .. } => ActiveAsr::Bailian(Arc::clone(asr)),
+            QaAsrStart::Xfyun { asr, .. } => ActiveAsr::Xfyun(Arc::clone(asr)),
             QaAsrStart::Ready { active, .. } => active.clone(),
         }
     }
@@ -396,6 +420,7 @@ impl QaAsrStart {
         match self {
             QaAsrStart::Volcengine { bridge, .. } => Arc::clone(bridge) as _,
             QaAsrStart::Bailian { bridge, .. } => Arc::clone(bridge) as _,
+            QaAsrStart::Xfyun { bridge, .. } => Arc::clone(bridge) as _,
             QaAsrStart::Ready { consumer, .. } => Arc::clone(consumer),
         }
     }
@@ -415,6 +440,15 @@ impl QaAsrStart {
                 let flushed = bridge.attach(target);
                 log::info!(
                     "[coord] QA Bailian ASR connected; flushed {flushed} deferred audio bytes"
+                );
+                Ok(())
+            }
+            QaAsrStart::Xfyun { asr, bridge } => {
+                asr.open_session().await.map_err(|e| e.to_string())?;
+                let target: Arc<dyn crate::asr::AudioConsumer> = Arc::clone(asr) as _;
+                let flushed = bridge.attach(target);
+                log::info!(
+                    "[coord] QA Xfyun ASR connected; flushed {flushed} deferred audio bytes"
                 );
                 Ok(())
             }
@@ -505,6 +539,10 @@ pub(super) async fn build_qa_asr_start(inner: &Arc<Inner>, active_asr: &str) -> 
     match active_asr_provider_kind(active_asr) {
         ActiveAsrProviderKind::Bailian => Ok(QaAsrStart::Bailian {
             asr: Arc::new(BailianRealtimeASR::new(read_bailian_credentials())),
+            bridge: Arc::new(DeferredAsrBridge::new()),
+        }),
+        ActiveAsrProviderKind::Xfyun => Ok(QaAsrStart::Xfyun {
+            asr: Arc::new(XfyunStreamingASR::new(read_xfyun_credentials())),
             bridge: Arc::new(DeferredAsrBridge::new()),
         }),
         ActiveAsrProviderKind::Mimo => {

@@ -37,6 +37,11 @@ pub async fn list_provider_models(kind: String) -> Result<ProviderModelsResult, 
             models: vec![crate::asr::mimo::DEFAULT_MODEL.to_string()],
         });
     }
+    if kind == "asr" && CredentialsVault::get_active_asr() == crate::asr::xfyun::PROVIDER_ID {
+        return Ok(ProviderModelsResult {
+            models: vec!["standard".to_string()],
+        });
+    }
     if kind == "llm" && CredentialsVault::get_active_llm() == CODEX_OAUTH_PROVIDER_ID {
         return Ok(ProviderModelsResult {
             models: vec![
@@ -190,6 +195,9 @@ async fn validate_asr_provider() -> Result<(), String> {
     if active_asr == crate::asr::mimo::PROVIDER_ID {
         return validate_mimo_asr_provider().await;
     }
+    if active_asr == crate::asr::xfyun::PROVIDER_ID {
+        return validate_xfyun_asr_provider().await;
+    }
 
     let config = read_openai_provider_config("asr")?;
     let model = CredentialsVault::get(CredentialAccount::AsrModel)
@@ -248,6 +256,42 @@ async fn validate_bailian_asr_provider() -> Result<(), String> {
     crate::asr::AudioConsumer::consume_pcm_chunk(
         &*asr,
         &vec![0u8; crate::asr::bailian::TARGET_AUDIO_CHUNK_BYTES],
+    );
+    asr.send_last_frame().await.map_err(|e| e.to_string())?;
+    asr.await_final_result()
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+async fn validate_xfyun_asr_provider() -> Result<(), String> {
+    let app_id = CredentialsVault::get(CredentialAccount::AsrApiKey)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    if app_id.trim().is_empty() {
+        return Err("App ID 为空".to_string());
+    }
+    let api_key = CredentialsVault::get(CredentialAccount::AsrEndpoint)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    if api_key.trim().is_empty() {
+        return Err("API Key 为空".to_string());
+    }
+    let endpoint = CredentialsVault::get(CredentialAccount::AsrModel)
+        .map_err(|e| e.to_string())?
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| crate::asr::xfyun::DEFAULT_ENDPOINT.to_string());
+    let asr = std::sync::Arc::new(crate::asr::XfyunStreamingASR::new(
+        crate::asr::XfyunCredentials {
+            app_id,
+            api_key,
+            endpoint,
+        },
+    ));
+    asr.open_session().await.map_err(|e| e.to_string())?;
+    crate::asr::AudioConsumer::consume_pcm_chunk(
+        &*asr,
+        &vec![0u8; crate::asr::xfyun::TARGET_AUDIO_CHUNK_BYTES],
     );
     asr.send_last_frame().await.map_err(|e| e.to_string())?;
     asr.await_final_result()

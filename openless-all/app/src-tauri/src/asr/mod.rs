@@ -13,11 +13,13 @@ pub mod pcm;
 pub mod volcengine;
 pub mod wav;
 pub mod whisper;
+pub mod xfyun;
 
 pub use bailian::{BailianCredentials, BailianRealtimeASR};
 pub use mimo::MimoBatchASR;
 pub use volcengine::{VolcengineCredentials, VolcengineStreamingASR};
 pub use whisper::WhisperBatchASR;
+pub use xfyun::{XfyunCredentials, XfyunStreamingASR};
 
 /// Sink for raw 16 kHz / 16-bit / mono PCM bytes coming off the recorder.
 ///

@@ -165,6 +165,9 @@ const ASR_PRESETS: ReadonlyArray<{ id: AsrPresetId; nameKey: string; baseUrl: st
   // 小米 MiMo ASR 按官方文档走 /chat/completions + input_audio，不是
   // Whisper /audio/transcriptions；后端由 asr/mimo.rs 专用 client 处理。
   { id: 'xiaomi-mimo-asr', nameKey: 'asrXiaomiMimo', baseUrl: 'https://api.xiaomimimo.com/v1',                  model: 'mimo-v2.5-asr'               },
+  // 讯飞实时语音转写标准版：WebSocket + HMAC-SHA1 签名鉴权，后端由 asr/xfyun.rs 处理。
+  // App ID → AsrApiKey 槽位，API Key → AsrEndpoint 槽位，接口地址 → AsrModel 槽位。
+  { id: 'xfyun-rtasr', nameKey: 'asrXfyun', baseUrl: 'wss://rtasr.xfyun.cn/v1/ws', model: '' },
   { id: 'foundry-local-whisper', nameKey: 'asrFoundryLocalWhisper', baseUrl: '',                              model: ''                              },
   // 本地引擎（Foundry / sherpa-onnx / Qwen3）：无 baseUrl/model 配置，
   // 模型在「高级 → 本地模型」里下载与切换。
@@ -310,11 +313,21 @@ export function ProvidersSection({ kind = 'all' }: ProvidersSectionProps = {}) {
       // 有默认值的预设就强制覆盖，让切换真切到位。volcengine 走另一套凭据、本地引擎
       // 无 baseUrl，都被 if 守卫天然跳过。与 onLlmProviderChange 同款修法。
       const preset = ASR_PRESETS.find(p => p.id === id);
-      if (preset && preset.baseUrl) {
+      if (id === 'xfyun-rtasr') {
+        // 讯飞凭据映射特殊：App ID → asr.api_key，API Key → asr.endpoint，接口地址 → asr.model。
+        // 切换时清空 App ID 和 API Key，接口地址写入默认值。
+        await setCredential('asr.api_key', '');
+        if (seq !== asrSwitchSeqRef.current) return;
+        await setCredential('asr.endpoint', '');
+        if (seq !== asrSwitchSeqRef.current) return;
+        await setCredential('asr.model', preset?.baseUrl || 'wss://rtasr.xfyun.cn/v1/ws');
+        if (seq !== asrSwitchSeqRef.current) return;
+      } else if (preset && preset.baseUrl) {
         await setCredential('asr.endpoint', preset.baseUrl);
         if (seq !== asrSwitchSeqRef.current) return;
       }
-      if (preset && preset.model) {
+      // model 字段即使为空也要写入，防止切换 provider 时残留旧值（如 volcengine 的 "cn"）。
+      if (id !== 'xfyun-rtasr' && preset) {
         await setCredential('asr.model', preset.model);
         if (seq !== asrSwitchSeqRef.current) return;
       }
@@ -481,6 +494,14 @@ export function ProvidersSection({ kind = 'all' }: ProvidersSectionProps = {}) {
             <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ol-ink-4)', lineHeight: 1.6 }}>
               {t('settings.providers.volcengineMappingNote')}
             </div>
+          </>
+        ) : committedAsrProvider === 'xfyun-rtasr' ? (
+          <>
+            <CredentialField key={`${committedAsrProvider}:app_id`} label="App ID" account="asr.api_key" mono mask />
+            <CredentialField key={`${committedAsrProvider}:api_key`} label="API Key" account="asr.endpoint" mono mask />
+            <CredentialField key={`${committedAsrProvider}:endpoint`} label={t('settings.providers.baseUrlLabel')} account="asr.model"
+              placeholder="wss://rtasr.xfyun.cn/v1/ws"
+              defaultValue="wss://rtasr.xfyun.cn/v1/ws" />
           </>
         ) : committedAsrProvider === 'local-qwen3' || committedAsrProvider === 'foundry-local-whisper' || committedAsrProvider === 'sherpa-onnx-local' || committedAsrProvider === 'apple-speech' ? (
           // 用户已经在用本地 ASR——dropdown 行的 asrProviderTakenOver 已经把

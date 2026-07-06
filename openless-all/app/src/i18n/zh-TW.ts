@@ -757,6 +757,7 @@ export const zhTW: typeof zhCN = {
         asrWhisper: 'OpenAI Whisper（兼容）',
         asrOpenrouter: 'OpenRouter Whisper',
         asrXiaomiMimo: '小米 MiMo ASR',
+        asrXfyun: '訊飛即時語音轉寫標準版',
         asrSherpaOnnxLocal: '本地 sherpa-onnx（實驗性）',
         asrFoundryLocalWhisper: '本地 Whisper（Foundry Local）',
         asrLocalQwen3: '本地 Qwen3-ASR',

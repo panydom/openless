@@ -1475,6 +1475,78 @@ pub(super) async fn begin_session_as(
         let flushed_bytes = bridge.attach(target);
         log::info!("[coord] Bailian ASR connected; flushed {flushed_bytes} deferred audio bytes");
         finish_starting_session(inner, current_session_id).await;
+    } else if is_xfyun_provider(&active_asr) {
+        let asr = Arc::new(XfyunStreamingASR::new(read_xfyun_credentials()));
+        let bridge = Arc::new(DeferredAsrBridge::new());
+        let consumer: Arc<dyn crate::recorder::AudioConsumer> = bridge.clone();
+        store_asr_for_session(
+            inner,
+            current_session_id,
+            ActiveAsr::Xfyun(Arc::clone(&asr)),
+        );
+        start_recorder_for_starting(inner, current_session_id, &active_asr, consumer).await?;
+
+        if let Err(e) = asr.open_session().await {
+            log::error!("[coord] open Xfyun ASR session failed: {e}");
+            match startup_race_status_for_starting(inner, current_session_id) {
+                StartupRaceStatus::StaleContinuation => {
+                    log::info!(
+                        "[coord] stale Xfyun ASR open_session error from session {current_session_id} — ignoring"
+                    );
+                    asr.cancel();
+                    discard_startup_resources_for_session(inner, current_session_id);
+                    restore_prepared_windows_ime_session(inner, current_session_id);
+                    return Ok(());
+                }
+                StartupRaceStatus::CancelRaced => {
+                    asr.cancel();
+                    discard_startup_resources_for_session(inner, current_session_id);
+                    restore_prepared_windows_ime_session(inner, current_session_id);
+                    set_phase_idle_if_session_matches(inner, current_session_id);
+                    return Ok(());
+                }
+                StartupRaceStatus::ActiveStarting => {
+                    asr.cancel();
+                }
+            }
+            discard_startup_resources_for_session(inner, current_session_id);
+            emit_capsule(
+                inner,
+                CapsuleState::Error,
+                0.0,
+                0,
+                Some(format!("ASR 连接失败: {e}")),
+                None,
+            );
+            restore_prepared_windows_ime_session(inner, current_session_id);
+            set_phase_idle_if_session_matches(inner, current_session_id);
+            schedule_capsule_idle(inner, CAPSULE_AUTO_HIDE_DELAY_MS);
+            return Err(e.to_string());
+        }
+        match startup_race_status_for_starting(inner, current_session_id) {
+            StartupRaceStatus::ActiveStarting => {}
+            StartupRaceStatus::CancelRaced => {
+                log::info!("[coord] cancel raced during Xfyun ASR open_session — aborting begin");
+                asr.cancel();
+                discard_startup_resources_for_session(inner, current_session_id);
+                restore_prepared_windows_ime_session(inner, current_session_id);
+                set_phase_idle_if_session_matches(inner, current_session_id);
+                return Ok(());
+            }
+            StartupRaceStatus::StaleContinuation => {
+                log::info!(
+                    "[coord] stale Xfyun ASR open_session continuation from session {current_session_id} — ignoring"
+                );
+                asr.cancel();
+                discard_startup_resources_for_session(inner, current_session_id);
+                restore_prepared_windows_ime_session(inner, current_session_id);
+                return Ok(());
+            }
+        }
+        let target: Arc<dyn crate::asr::AudioConsumer> = asr;
+        let flushed_bytes = bridge.attach(target);
+        log::info!("[coord] Xfyun ASR connected; flushed {flushed_bytes} deferred audio bytes");
+        finish_starting_session(inner, current_session_id).await;
     } else if is_mimo_provider(&active_asr) {
         let (api_key, base_url, model) = read_mimo_credentials();
         let mimo = Arc::new(MimoBatchASR::new(api_key, base_url, model));
@@ -2102,6 +2174,32 @@ pub(super) async fn end_session(inner: &Arc<Inner>) -> Result<(), String> {
                     Err(TranscribeFail::new(
                         "识别超时".to_string(),
                         "bailian global timeout".to_string(),
+                    ))
+                }
+            }
+        }
+        ActiveAsr::Xfyun(asr) => {
+            debug_assert!(uses_global_timeout);
+            if let Err(e) = asr.send_last_frame().await {
+                log::error!("[coord] Xfyun send last frame failed: {e}");
+            }
+            let timeout_duration = std::time::Duration::from_secs(COORDINATOR_GLOBAL_TIMEOUT_SECS);
+            match tokio::time::timeout(timeout_duration, asr.await_final_result()).await {
+                Ok(Ok(r)) => Ok(r),
+                Ok(Err(e)) => {
+                    log::error!("[coord] Xfyun await final failed: {e}");
+                    asr.cancel();
+                    Err(TranscribeFail::new(format!("识别失败: {e}"), e.to_string()))
+                }
+                Err(_) => {
+                    log::error!(
+                        "[coord] Xfyun 全局超时 {} 秒",
+                        COORDINATOR_GLOBAL_TIMEOUT_SECS
+                    );
+                    asr.cancel();
+                    Err(TranscribeFail::new(
+                        "识别超时".to_string(),
+                        "xfyun global timeout".to_string(),
                     ))
                 }
             }

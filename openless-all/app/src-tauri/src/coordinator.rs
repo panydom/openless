@@ -26,7 +26,8 @@ use crate::asr::local::{
 };
 use crate::asr::{
     BailianCredentials, BailianRealtimeASR, DictionaryHotword, MimoBatchASR, RawTranscript,
-    VolcengineCredentials, VolcengineStreamingASR, WhisperBatchASR,
+    VolcengineCredentials, VolcengineStreamingASR, WhisperBatchASR, XfyunCredentials,
+    XfyunStreamingASR,
 };
 use crate::combo_hotkey::{ComboHotkeyError, ComboHotkeyEvent, ComboHotkeyMonitor};
 use crate::coordinator_state::{
@@ -177,6 +178,7 @@ enum ActiveAsr {
     Whisper(Arc<WhisperBatchASR>),
     Mimo(Arc<MimoBatchASR>),
     Bailian(Arc<BailianRealtimeASR>),
+    Xfyun(Arc<XfyunStreamingASR>),
     #[cfg(target_os = "windows")]
     FoundryLocalWhisper(Arc<FoundryLocalWhisperAsr>),
     /// Windows sherpa-onnx 本地 ASR（offline batch + 实验 online streaming）。
@@ -208,6 +210,7 @@ enum ActiveAsrProviderKind {
     Mimo,
     WhisperCompatible,
     Volcengine,
+    Xfyun,
 }
 
 fn active_asr_provider_kind(id: &str) -> ActiveAsrProviderKind {
@@ -215,6 +218,8 @@ fn active_asr_provider_kind(id: &str) -> ActiveAsrProviderKind {
         ActiveAsrProviderKind::Bailian
     } else if is_mimo_provider(id) {
         ActiveAsrProviderKind::Mimo
+    } else if is_xfyun_provider(id) {
+        ActiveAsrProviderKind::Xfyun
     } else if is_whisper_compatible_provider(id) {
         ActiveAsrProviderKind::WhisperCompatible
     } else {
@@ -1532,6 +1537,13 @@ impl Coordinator {
                     .map_err(|_| "重新转录超时".to_string())?
                     .map_err(|e| e.to_string())?
             }
+            ActiveAsr::Xfyun(asr) => {
+                asr.send_last_frame().await.map_err(|e| e.to_string())?;
+                tokio::time::timeout(timeout, asr.await_final_result())
+                    .await
+                    .map_err(|_| "重新转录超时".to_string())?
+                    .map_err(|e| e.to_string())?
+            }
             ActiveAsr::Whisper(w) => tokio::time::timeout(timeout, w.transcribe())
                 .await
                 .map_err(|_| "重新转录超时".to_string())?
@@ -1975,6 +1987,27 @@ fn read_volc_credentials() -> VolcengineCredentials {
         app_id,
         access_token,
         resource_id,
+    }
+}
+
+fn read_xfyun_credentials() -> XfyunCredentials {
+    let app_id = CredentialsVault::get(CredentialAccount::AsrApiKey)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let api_key = CredentialsVault::get(CredentialAccount::AsrEndpoint)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let endpoint = CredentialsVault::get(CredentialAccount::AsrModel)
+        .ok()
+        .flatten()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| crate::asr::xfyun::DEFAULT_ENDPOINT.to_string());
+    XfyunCredentials {
+        app_id,
+        api_key,
+        endpoint,
     }
 }
 
